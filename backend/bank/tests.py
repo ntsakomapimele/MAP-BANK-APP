@@ -18,11 +18,14 @@ class RegistrationTests(APITestCase):
             "last_name": "Doe",
             "password": "SuperSecret123",
             "phone": "+15551234567",
+            "id_number": "9001011234567",
         }
         response = self.client.post(url, payload)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertTrue(User.objects.filter(username="alice").exists())
-        self.assertTrue(Customer.objects.filter(user__username="alice").exists())
+        customer = Customer.objects.get(user__username="alice")
+        self.assertEqual(customer.id_number, "9001011234567")
+        self.assertEqual(customer.phone, "+15551234567")
 
     def test_register_rejects_duplicate_email(self):
         User.objects.create_user(username="bob", email="dupe@example.com", password="x")
@@ -32,13 +35,14 @@ class RegistrationTests(APITestCase):
             "email": "dupe@example.com",
             "password": "SuperSecret123",
             "phone": "+15551234567",
+            "id_number": "9002021234567",
         }
         response = self.client.post(url, payload)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_register_rejects_weak_password(self):
         url = reverse("register")
-        payload = {"username": "carl", "email": "carl@example.com", "password": "123", "phone": "555"}
+        payload = {"username": "carl", "email": "carl@example.com", "password": "123", "phone": "555", "id_number": "9003031234567"}
         response = self.client.post(url, payload)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
@@ -46,7 +50,7 @@ class RegistrationTests(APITestCase):
 class AuthTests(APITestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="dana", password="SuperSecret123")
-        Customer.objects.create(user=self.user, phone="+15551234567")
+        Customer.objects.create(user=self.user, phone="+15551234567", id_number="9004011234567")
 
     def test_login_returns_tokens(self):
         response = self.client.post(reverse("token_obtain_pair"), {"username": "dana", "password": "SuperSecret123"})
@@ -77,9 +81,9 @@ class AuthTests(APITestCase):
 class AccountTests(APITestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="erin", password="SuperSecret123")
-        self.customer = Customer.objects.create(user=self.user, phone="+15551234567")
+        self.customer = Customer.objects.create(user=self.user, phone="+15551234567", id_number="9005011234567")
         self.other_user = User.objects.create_user(username="frank", password="SuperSecret123")
-        self.other_customer = Customer.objects.create(user=self.other_user, phone="+15557654321")
+        self.other_customer = Customer.objects.create(user=self.other_user, phone="+15557654321", id_number="9006011234567")
         self.client.force_authenticate(user=self.user)
 
     def test_create_account(self):
@@ -106,11 +110,11 @@ class AccountTests(APITestCase):
 class MoneyMovementTests(APITestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="gina", password="SuperSecret123")
-        self.customer = Customer.objects.create(user=self.user, phone="+15551234567")
+        self.customer = Customer.objects.create(user=self.user, phone="+15551234567", id_number="9007011234567")
         self.account = Account.objects.create(customer=self.customer, account_type="CHECKING", balance=Decimal("100.00"))
 
         self.other_user = User.objects.create_user(username="hank", password="SuperSecret123")
-        self.other_customer = Customer.objects.create(user=self.other_user, phone="+15557654321")
+        self.other_customer = Customer.objects.create(user=self.other_user, phone="+15557654321", id_number="9008011234567")
         self.other_account = Account.objects.create(customer=self.other_customer, account_type="SAVINGS")
 
         self.client.force_authenticate(user=self.user)

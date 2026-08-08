@@ -55,6 +55,7 @@ export default function AuthScreen() {
     first_name: '',
     last_name: '',
     phone: '',
+    id_number: '',
   });
 
   const update = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
@@ -224,6 +225,15 @@ export default function AuthScreen() {
                       required
                       value={form.phone}
                       onChange={update('phone')}
+                      className={inputClass}
+                    />
+                  </Field>
+                  <Field label="ID number" delay={200}>
+                    <input
+                      type="text"
+                      required
+                      value={form.id_number}
+                      onChange={update('id_number')}
                       className={inputClass}
                     />
                   </Field>

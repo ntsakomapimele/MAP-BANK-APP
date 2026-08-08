@@ -11,23 +11,30 @@ from .models import Transaction
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, validators=[validate_password])
     phone = serializers.CharField(write_only=True)
+    id_number = serializers.CharField(write_only=True)
 
     class Meta:
         model = User
-        fields = ["username", "email", "first_name", "last_name", "password", "phone"]
+        fields = ["username", "email", "first_name", "last_name", "password", "phone", "id_number"]
 
     def validate_email(self, value):
         if User.objects.filter(email=value).exists():
             raise serializers.ValidationError("A user with this email already exists.")
         return value
 
+    def validate_id_number(self, value):
+        if Customer.objects.filter(id_number=value).exists():
+            raise serializers.ValidationError("A customer with this ID number already exists.")
+        return value
+
     def create(self, validated_data):
         phone = validated_data.pop("phone")
+        id_number = validated_data.pop("id_number")
         password = validated_data.pop("password")
         user = User(**validated_data)
         user.set_password(password)
         user.save()
-        Customer.objects.create(user=user, phone=phone)
+        Customer.objects.create(user=user, phone=phone, id_number=id_number)
         return user
 
 
@@ -39,7 +46,7 @@ class CustomerSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Customer
-        fields = ["id", "username", "email", "first_name", "last_name", "phone", "created_at"]
+        fields = ["id", "username", "email", "first_name", "last_name", "id_number", "phone", "created_at"]
 
 
 
