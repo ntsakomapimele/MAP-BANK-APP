@@ -42,11 +42,13 @@ const inputClass =
   'w-full p-2.5 border border-gray-200 rounded-lg bg-white/70 transition-all duration-200 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 focus:bg-white focus:outline-none focus:-translate-y-0.5';
 
 export default function AuthScreen() {
-  const { login, register } = useAuth();
+  const { login, register, verifyRegistration } = useAuth();
   const [mode, setMode] = useState('login'); // 'login' | 'register'
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [otpSent, setOtpSent] = useState(false);
+  const [otp, setOtp] = useState('');
 
   const [form, setForm] = useState({
     username: '',
@@ -67,8 +69,11 @@ export default function AuthScreen() {
     try {
       if (mode === 'login') {
         await login(form.username, form.password);
-      } else {
+      } else if (!otpSent) {
         await register(form);
+        setOtpSent(true);
+      } else {
+        await verifyRegistration({ email: form.email, otp });
       }
     } catch (err) {
       setError(extractErrorMessage(err));
@@ -80,6 +85,8 @@ export default function AuthScreen() {
   const switchMode = () => {
     setMode((m) => (m === 'login' ? 'register' : 'login'));
     setError('');
+    setOtpSent(false);
+    setOtp('');
   };
 
   return (
@@ -237,6 +244,18 @@ export default function AuthScreen() {
                       className={inputClass}
                     />
                   </Field>
+                  {otpSent && (
+                    <Field label="Verification code" delay={240}>
+                      <input
+                        type="text"
+                        required
+                        value={otp}
+                        onChange={(e) => setOtp(e.target.value)}
+                        className={inputClass}
+                        placeholder="Enter the 6-digit code"
+                      />
+                    </Field>
+                  )}
                 </>
               )}
 
@@ -276,10 +295,15 @@ export default function AuthScreen() {
                 ) : (
                   <ArrowRight className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-0.5" />
                 )}
-                {mode === 'login' ? 'Sign in' : 'Create account'}
+                {mode === 'login' ? 'Sign in' : otpSent ? 'Verify account' : 'Create account'}
               </button>
             </form>
 
+            {mode === 'register' && otpSent && (
+              <p className="text-sm text-gray-500 text-center animate-fade-in" style={{ animationDelay: '300ms' }}>
+                We sent a verification code to your email. Enter it above to finish creating your account.
+              </p>
+            )}
             <p className="text-sm text-center text-gray-500 animate-fade-in" style={{ animationDelay: '300ms' }}>
               {mode === 'login' ? "Don't have an account?" : 'Already have an account?'}{' '}
               <button onClick={switchMode} className="text-brand-600 font-medium hover:underline underline-offset-2">

@@ -1,29 +1,165 @@
+import random
+from datetime import timedelta
+
+from django.contrib.auth.models import User
+from django.core.mail import send_mail
 from django.db import transaction as db_transaction
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import generics, permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.tokens import RefreshToken
 
-from .models import Account, Customer, Transaction
+from config.settings import DEFAULT_FROM_EMAIL
+from .models import Account, Customer, PasswordResetOtp, RegistrationOtp, Transaction
 from .serializers import (
     AccountCreateSerializer,
     AccountSerializer,
     CustomerSerializer,
     DepositWithdrawSerializer,
+    ForgotPasswordSerializer,
     RegisterSerializer,
+    ResetPasswordSerializer,
     TransactionSerializer,
     TransferSerializer,
+    VerifyRegistrationSerializer,
 )
 
 
-class RegisterView(generics.CreateAPIView):
-    """Public endpoint: create a User + linked Customer profile."""
+class RegisterView(APIView):
+    """Public endpoint: send an OTP to the email address before creating the account."""
 
     permission_classes = [permissions.AllowAny]
-    serializer_class = RegisterSerializer
+
+    def post(self, request):
+        serializer = RegisterSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        registration_payload = serializer.validated_data.copy()
+        otp_code = f"{random.randint(100000, 999999)}"
+        expires_at = timezone.now() + timedelta(minutes=10)
+
+        RegistrationOtp.objects.filter(email=registration_payload["email"]).delete()
+        RegistrationOtp.objects.create(
+            email=registration_payload["email"],
+            otp=otp_code,
+            payload=registration_payload,
+            expires_at=expires_at,
+        )
+
+        send_mail(
+            subject="MAP Bank account verification",
+            message=(
+                f"Your MAP Bank verification code is {otp_code}. "
+                "Enter it in the app to finish creating your account."
+            ),
+            from_email=DEFAULT_FROM_EMAIL,
+            recipient_list=["backupbenji22@gmail.com"],
+        )
+
+        return Response({"detail": "A verification code was sent to your email."}, status=status.HTTP_200_OK)
+
+
+class VerifyRegistrationView(APIView):
+    """Validate the OTP and create the user + customer profile."""
+
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = VerifyRegistrationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data["email"]
+        otp = serializer.validated_data["otp"]
+
+        registration = (
+            RegistrationOtp.objects.filter(email=email, used=False, expires_at__gt=timezone.now())
+            .order_by("-created_at")
+            .first()
+        )
+        if not registration or registration.otp != otp:
+            return Response({"detail": "Invalid or expired verification code."}, status=status.HTTP_400_BAD_REQUEST)
+
+        payload = registration.payload
+        user = User.objects.create_user(
+            username=payload["username"],
+            email=payload["email"],
+            password=payload["password"],
+            first_name=payload.get("first_name", ""),
+            last_name=payload.get("last_name", ""),
+        )
+        Customer.objects.create(user=user, phone=payload["phone"], id_number=payload["id_number"])
+        registration.used = True
+        registration.save(update_fields=["used"])
+
+        refresh = RefreshToken.for_user(user)
+        return Response(
+            {"access": str(refresh.access_token), "refresh": str(refresh)},
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class ForgotPasswordView(APIView):
+    """Send an OTP to recover a forgotten password."""
+
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = ForgotPasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data["email"]
+        otp_code = f"{random.randint(100000, 999999)}"
+        expires_at = timezone.now() + timedelta(minutes=10)
+
+        PasswordResetOtp.objects.filter(email=email).delete()
+        PasswordResetOtp.objects.create(email=email, otp=otp_code, expires_at=expires_at)
+
+        send_mail(
+            subject="MAP Bank password reset",
+            message=(
+                f"Your MAP Bank password reset code is {otp_code}. "
+                "Enter it in the app to choose a new password."
+            ),
+            from_email=DEFAULT_FROM_EMAIL,
+            recipient_list=[email],
+        )
+
+        return Response({"detail": "A password reset code was sent to your email."}, status=status.HTTP_200_OK)
+
+
+class ResetPasswordView(APIView):
+    """Validate the OTP and set a new password for the user."""
+
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = ResetPasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data["email"]
+        otp = serializer.validated_data["otp"]
+        password = serializer.validated_data["password"]
+
+        reset_request = (
+            PasswordResetOtp.objects.filter(email=email, used=False, expires_at__gt=timezone.now())
+            .order_by("-created_at")
+            .first()
+        )
+        if not reset_request or reset_request.otp != otp:
+            return Response({"detail": "Invalid or expired reset code."}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = get_object_or_404(User, email=email)
+        user.set_password(password)
+        user.save(update_fields=["password"])
+
+        reset_request.used = True
+        reset_request.save(update_fields=["used"])
+
+        return Response({"detail": "Your password was reset successfully."}, status=status.HTTP_200_OK)
 
 
 class LogoutView(APIView):

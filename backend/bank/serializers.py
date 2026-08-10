@@ -8,14 +8,19 @@ from .models import Account
 from .models import Transaction
 
 
-class RegisterSerializer(serializers.ModelSerializer):
+class RegisterSerializer(serializers.Serializer):
+    username = serializers.CharField(max_length=150)
+    email = serializers.EmailField()
+    first_name = serializers.CharField(required=False, allow_blank=True)
+    last_name = serializers.CharField(required=False, allow_blank=True)
     password = serializers.CharField(write_only=True, validators=[validate_password])
-    phone = serializers.CharField(write_only=True)
-    id_number = serializers.CharField(write_only=True)
+    phone = serializers.CharField()
+    id_number = serializers.CharField()
 
-    class Meta:
-        model = User
-        fields = ["username", "email", "first_name", "last_name", "password", "phone", "id_number"]
+    def validate_username(self, value):
+        if User.objects.filter(username=value).exists():
+            raise serializers.ValidationError("A user with this username already exists.")
+        return value
 
     def validate_email(self, value):
         if User.objects.filter(email=value).exists():
@@ -27,15 +32,25 @@ class RegisterSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("A customer with this ID number already exists.")
         return value
 
-    def create(self, validated_data):
-        phone = validated_data.pop("phone")
-        id_number = validated_data.pop("id_number")
-        password = validated_data.pop("password")
-        user = User(**validated_data)
-        user.set_password(password)
-        user.save()
-        Customer.objects.create(user=user, phone=phone, id_number=id_number)
-        return user
+
+class VerifyRegistrationSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    otp = serializers.CharField(min_length=6, max_length=6)
+
+
+class ForgotPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+    def validate_email(self, value):
+        if not User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("No account exists for this email.")
+        return value
+
+
+class ResetPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    otp = serializers.CharField(min_length=6, max_length=6)
+    password = serializers.CharField(write_only=True, validators=[validate_password])
 
 
 class CustomerSerializer(serializers.ModelSerializer):

@@ -90,6 +90,7 @@ api.interceptors.response.use(
 
 // ---- Auth ----
 export const registerUser = (payload) => api.post('/auth/register/', payload);
+export const verifyRegistrationOtp = (payload) => api.post('/auth/verify-registration/', payload);
 export const loginUser = (username, password) => api.post('/auth/login/', { username, password });
 export const logoutUser = (refresh) => api.post('/auth/logout/', { refresh });
 export const getMe = () => api.get('/auth/me/');

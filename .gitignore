@@ -1,3 +1,5 @@
-__pycache__/
-*.pyc
+<<<<<<< HEAD
+=======
 .env
+backend/.env
+>>>>>>> feature/forgot-password-flow

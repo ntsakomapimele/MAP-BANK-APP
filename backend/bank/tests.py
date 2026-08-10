@@ -1,6 +1,9 @@
+import re
 from decimal import Decimal
 
 from django.contrib.auth.models import User
+from django.core import mail
+from django.test import override_settings
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -8,8 +11,9 @@ from rest_framework.test import APITestCase
 from .models import Account, Customer, Transaction
 
 
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
 class RegistrationTests(APITestCase):
-    def test_register_creates_user_and_customer(self):
+    def test_register_sends_otp_and_creates_user_after_verification(self):
         url = reverse("register")
         payload = {
             "username": "alice",
@@ -21,14 +25,23 @@ class RegistrationTests(APITestCase):
             "id_number": "9001011234567",
         }
         response = self.client.post(url, payload)
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(mail.outbox), 1)
+
+        otp_code = re.search(r"\d{6}", mail.outbox[0].body)
+        self.assertIsNotNone(otp_code)
+        otp_code = otp_code.group(0)
+        verify_response = self.client.post(
+            reverse("verify-registration"), {"email": payload["email"], "otp": otp_code}
+        )
+        self.assertEqual(verify_response.status_code, status.HTTP_201_CREATED)
         self.assertTrue(User.objects.filter(username="alice").exists())
         customer = Customer.objects.get(user__username="alice")
         self.assertEqual(customer.id_number, "9001011234567")
         self.assertEqual(customer.phone, "+15551234567")
 
     def test_register_rejects_duplicate_email(self):
-        User.objects.create_user(username="bob", email="dupe@example.com", password="x")
+        User.objects.create_user(username="bob", email="dupe@example.com", password="SuperSecret123")
         url = reverse("register")
         payload = {
             "username": "bob2",

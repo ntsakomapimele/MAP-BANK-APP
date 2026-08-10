@@ -4,12 +4,41 @@ from django.db import models
 
 class Customer(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="customer")
-    id_number = models.CharField(max_length=20, unique=True, default="")
+    id_number = models.CharField(max_length=20, unique=True, default="", blank=True)
     phone = models.CharField(max_length=20)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return self.user.get_full_name() or self.user.username
+
+
+class RegistrationOtp(models.Model):
+    email = models.EmailField()
+    otp = models.CharField(max_length=6)
+    payload = models.JSONField(default=dict, blank=True)
+    expires_at = models.DateTimeField()
+    used = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.email} ({self.otp})"
+
+
+class PasswordResetOtp(models.Model):
+    email = models.EmailField()
+    otp = models.CharField(max_length=6)
+    expires_at = models.DateTimeField()
+    used = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.email} ({self.otp})"
 
 
 class Account(models.Model):
