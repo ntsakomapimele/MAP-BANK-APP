@@ -3,6 +3,13 @@
 from django.db import migrations, models
 
 
+def populate_id_numbers(apps, schema_editor):
+    Customer = apps.get_model("bank", "Customer")
+    for customer in Customer.objects.order_by("id"):
+        customer.id_number = f"CUST{customer.id}"
+        customer.save(update_fields=["id_number"])
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -11,6 +18,12 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.AddField(
+            model_name="customer",
+            name="id_number",
+            field=models.CharField(blank=True, max_length=20, null=True),
+        ),
+        migrations.RunPython(populate_id_numbers, migrations.RunPython.noop),
+        migrations.AlterField(
             model_name="customer",
             name="id_number",
             field=models.CharField(default="", max_length=20, unique=True),
