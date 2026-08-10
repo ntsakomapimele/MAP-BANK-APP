@@ -38,6 +38,21 @@ class VerifyRegistrationSerializer(serializers.Serializer):
     otp = serializers.CharField(min_length=6, max_length=6)
 
 
+class ForgotPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+    def validate_email(self, value):
+        if not User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("No account exists for this email.")
+        return value
+
+
+class ResetPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    otp = serializers.CharField(min_length=6, max_length=6)
+    password = serializers.CharField(write_only=True, validators=[validate_password])
+
+
 class CustomerSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source="user.username", read_only=True)
     email = serializers.EmailField(source="user.email", read_only=True)

@@ -14,13 +14,15 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from config.settings import DEFAULT_FROM_EMAIL
-from .models import Account, Customer, RegistrationOtp, Transaction
+from .models import Account, Customer, PasswordResetOtp, RegistrationOtp, Transaction
 from .serializers import (
     AccountCreateSerializer,
     AccountSerializer,
     CustomerSerializer,
     DepositWithdrawSerializer,
+    ForgotPasswordSerializer,
     RegisterSerializer,
+    ResetPasswordSerializer,
     TransactionSerializer,
     TransferSerializer,
     VerifyRegistrationSerializer,
@@ -98,6 +100,66 @@ class VerifyRegistrationView(APIView):
             {"access": str(refresh.access_token), "refresh": str(refresh)},
             status=status.HTTP_201_CREATED,
         )
+
+
+class ForgotPasswordView(APIView):
+    """Send an OTP to recover a forgotten password."""
+
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = ForgotPasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data["email"]
+        otp_code = f"{random.randint(100000, 999999)}"
+        expires_at = timezone.now() + timedelta(minutes=10)
+
+        PasswordResetOtp.objects.filter(email=email).delete()
+        PasswordResetOtp.objects.create(email=email, otp=otp_code, expires_at=expires_at)
+
+        send_mail(
+            subject="MAP Bank password reset",
+            message=(
+                f"Your MAP Bank password reset code is {otp_code}. "
+                "Enter it in the app to choose a new password."
+            ),
+            from_email=DEFAULT_FROM_EMAIL,
+            recipient_list=[email],
+        )
+
+        return Response({"detail": "A password reset code was sent to your email."}, status=status.HTTP_200_OK)
+
+
+class ResetPasswordView(APIView):
+    """Validate the OTP and set a new password for the user."""
+
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        serializer = ResetPasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data["email"]
+        otp = serializer.validated_data["otp"]
+        password = serializer.validated_data["password"]
+
+        reset_request = (
+            PasswordResetOtp.objects.filter(email=email, used=False, expires_at__gt=timezone.now())
+            .order_by("-created_at")
+            .first()
+        )
+        if not reset_request or reset_request.otp != otp:
+            return Response({"detail": "Invalid or expired reset code."}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = get_object_or_404(User, email=email)
+        user.set_password(password)
+        user.save(update_fields=["password"])
+
+        reset_request.used = True
+        reset_request.save(update_fields=["used"])
+
+        return Response({"detail": "Your password was reset successfully."}, status=status.HTTP_200_OK)
 
 
 class LogoutView(APIView):
