@@ -12,6 +12,21 @@ class Customer(models.Model):
         return self.user.get_full_name() or self.user.username
 
 
+class RegistrationOtp(models.Model):
+    email = models.EmailField()
+    otp = models.CharField(max_length=6)
+    payload = models.JSONField(default=dict, blank=True)
+    expires_at = models.DateTimeField()
+    used = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.email} ({self.otp})"
+
+
 class Account(models.Model):
     ACCOUNT_TYPES = [
         ("CHECKING", "Checking"),

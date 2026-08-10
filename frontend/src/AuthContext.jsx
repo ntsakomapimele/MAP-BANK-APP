@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { loginUser, registerUser, logoutUser, getMe, tokenStore } from './api';
+import { loginUser, registerUser, verifyRegistrationOtp, logoutUser, getMe, tokenStore } from './api';
 
 const AuthContext = createContext(null);
 
@@ -40,9 +40,15 @@ export function AuthProvider({ children }) {
   };
 
   const register = async (payload) => {
-    await registerUser(payload);
-    // Auto-login right after successful registration.
-    return login(payload.username, payload.password);
+    return registerUser(payload);
+  };
+
+  const verifyRegistration = async (payload) => {
+    const res = await verifyRegistrationOtp(payload);
+    tokenStore.setTokens(res.data.access, res.data.refresh);
+    const me = await getMe();
+    setUser(me.data);
+    return me.data;
   };
 
   const logout = async () => {
@@ -58,7 +64,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, initializing, login, register, logout, refreshUser: loadUser }}>
+    <AuthContext.Provider value={{ user, initializing, login, register, verifyRegistration, logout, refreshUser: loadUser }}>
       {children}
     </AuthContext.Provider>
   );
