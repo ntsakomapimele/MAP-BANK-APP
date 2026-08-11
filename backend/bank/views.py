@@ -1,9 +1,11 @@
+import csv
 import random
 from datetime import timedelta
 
 from django.contrib.auth.models import User
 from django.core.mail import send_mail
 from django.db import transaction as db_transaction
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics, permissions, status, viewsets
@@ -18,9 +20,11 @@ from .models import Account, Customer, PasswordResetOtp, RegistrationOtp, Transa
 from .serializers import (
     AccountCreateSerializer,
     AccountSerializer,
+    ChangePasswordSerializer,
     CustomerSerializer,
     DepositWithdrawSerializer,
     ForgotPasswordSerializer,
+    ProfileSerializer,
     RegisterSerializer,
     ResetPasswordSerializer,
     TransactionSerializer,
@@ -179,14 +183,30 @@ class LogoutView(APIView):
         return Response(status=status.HTTP_205_RESET_CONTENT)
 
 
-class MeView(APIView):
-    """Returns the profile of the currently authenticated customer."""
+class MeView(generics.RetrieveUpdateAPIView):
+    """Returns and updates the profile of the currently authenticated customer."""
 
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = ProfileSerializer
 
-    def get(self, request):
-        customer = get_object_or_404(Customer, user=request.user)
-        return Response(CustomerSerializer(customer).data)
+    def get_object(self):
+        return get_object_or_404(Customer, user=self.request.user)
+
+    def put(self, request, *args, **kwargs):
+        return self.update(request, *args, **kwargs)
+
+    def patch(self, request, *args, **kwargs):
+        return self.partial_update(request, *args, **kwargs)
+
+
+class ChangePasswordView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = ChangePasswordSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response({"detail": "Password changed successfully."}, status=status.HTTP_200_OK)
 
 
 class AccountViewSet(viewsets.ModelViewSet):
@@ -332,6 +352,58 @@ class AccountViewSet(viewsets.ModelViewSet):
 
         return Response(TransactionSerializer(out_txn).data, status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=["post"])
+    def buy_airtime(self, request, pk=None):
+        from .serializers import AirtimeSerializer
+        serializer = AirtimeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        amount = serializer.validated_data["amount"]
+        phone = serializer.validated_data["phone_number"]
+
+        with db_transaction.atomic():
+            account = self.get_owned_account_for_update(pk, request)
+            if account.balance < amount:
+                return Response({"detail": "Insufficient funds."}, status=status.HTTP_400_BAD_REQUEST)
+
+            account.balance -= amount
+            account.save(update_fields=["balance"])
+
+            txn = Transaction.objects.create(
+                account=account,
+                transaction_type="AIRTIME",
+                amount=amount,
+                balance_after=account.balance,
+                description=f"Airtime purchase to {phone}",
+            )
+
+        return Response(TransactionSerializer(txn).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"])
+    def buy_electricity(self, request, pk=None):
+        from .serializers import ElectricitySerializer
+        serializer = ElectricitySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        amount = serializer.validated_data["amount"]
+        meter = serializer.validated_data["meter_number"]
+
+        with db_transaction.atomic():
+            account = self.get_owned_account_for_update(pk, request)
+            if account.balance < amount:
+                return Response({"detail": "Insufficient funds."}, status=status.HTTP_400_BAD_REQUEST)
+
+            account.balance -= amount
+            account.save(update_fields=["balance"])
+
+            txn = Transaction.objects.create(
+                account=account,
+                transaction_type="ELECTRICITY",
+                amount=amount,
+                balance_after=account.balance,
+                description=f"Electricity purchase for meter {meter}",
+            )
+
+        return Response(TransactionSerializer(txn).data, status=status.HTTP_201_CREATED)
+
     @action(detail=True, methods=["get"])
     def transactions(self, request, pk=None):
         account = get_object_or_404(Account, pk=pk, customer__user=request.user)
@@ -340,6 +412,35 @@ class AccountViewSet(viewsets.ModelViewSet):
         if page is not None:
             return self.get_paginated_response(TransactionSerializer(page, many=True).data)
         return Response(TransactionSerializer(txns, many=True).data)
+
+    @action(detail=True, methods=["get"])
+    def export(self, request, pk=None):
+        account = get_object_or_404(Account, pk=pk, customer__user=request.user)
+        txns = account.transactions.order_by("-created_at")
+
+        response = HttpResponse(content_type="text/csv")
+        response["Content-Disposition"] = f'attachment; filename="statement_{account.account_number}.csv"'
+
+        writer = csv.writer(response)
+        writer.writerow([
+            "Date",
+            "Type",
+            "Amount",
+            "Balance After",
+            "Related Account",
+            "Description",
+        ])
+        for txn in txns:
+            writer.writerow([
+                txn.created_at.isoformat(),
+                txn.transaction_type,
+                str(txn.amount),
+                str(txn.balance_after),
+                txn.related_account.account_number if txn.related_account else "",
+                txn.description,
+            ])
+
+        return response
 
 
 class TransactionListView(generics.ListAPIView):

@@ -9,14 +9,30 @@ import {
   Loader2,
   Wallet,
   Landmark,
+  User,
+  Key,
   CheckCircle2,
   AlertCircle,
   X,
   Sparkles,
 } from 'lucide-react';
-import { getAccounts, createAccount, getAccountTransactions, deposit, withdraw, transfer } from './api';
+import {
+  changePassword,
+  createAccount,
+  exportAccountStatement,
+  getAccountTransactions,
+  getAccounts,
+  getProfile,
+  updateProfile,
+  deposit,
+  withdraw,
+  transfer,
+  buyAirtime,
+  buyElectricity,
+} from './api';
 import { useAuth } from './AuthContext';
 import AnimatedNumber from './AnimatedNumber';
+import Profile from './Profile';
 
 function extractErrorMessage(err) {
   const data = err?.response?.data;
@@ -36,6 +52,8 @@ const TABS = [
   { key: 'deposit', label: 'Deposit', icon: ArrowDownLeft },
   { key: 'withdraw', label: 'Withdraw', icon: ArrowUpRight },
   { key: 'transfer', label: 'Transfer', icon: Send },
+  { key: 'airtime', label: 'Buy Airtime', icon: Key },
+  { key: 'electricity', label: 'Buy Electricity', icon: Loader2 },
 ];
 
 // Floating banner for errors / success messages. Re-keyed by its message so
@@ -69,7 +87,7 @@ function SkeletonBlock({ className = '' }) {
 }
 
 export default function Dashboard() {
-  const { user, logout } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
   const [accounts, setAccounts] = useState([]);
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [transactions, setTransactions] = useState([]);
@@ -80,12 +98,25 @@ export default function Dashboard() {
   const [success, setSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [creatingAccount, setCreatingAccount] = useState(false);
+  const [sideView, setSideView] = useState('dashboard');
+  const [exporting, setExporting] = useState(false);
+  const [profileSubmitting, setProfileSubmitting] = useState(false);
+  const [passwordSubmitting, setPasswordSubmitting] = useState(false);
   const [newAccountType, setNewAccountType] = useState('CHECKING');
+  const [profileForm, setProfileForm] = useState({
+    first_name: '',
+    last_name: '',
+    email: '',
+    phone: '',
+    id_number: '',
+  });
+  const [passwordForm, setPasswordForm] = useState({ current_password: '', new_password: '' });
 
   // Form state
   const [amount, setAmount] = useState('');
   const [targetAccount, setTargetAccount] = useState('');
-  const [actionType, setActionType] = useState('deposit'); // deposit, withdraw, transfer
+  const [purchaseTarget, setPurchaseTarget] = useState('');
+  const [actionType, setActionType] = useState('deposit'); // deposit, withdraw, transfer, airtime, electricity
 
   const fetchAccounts = useCallback(async () => {
     try {
@@ -185,10 +216,33 @@ export default function Dashboard() {
         }
         await transfer(selectedAccount.id, targetAccount, formattedAmount);
         setSuccess(`Transferred R${formattedAmount} to ${targetAccount}`);
+      } else if (actionType === 'airtime') {
+        if (!purchaseTarget) {
+          setError('Phone number is required for airtime purchase.');
+          setSubmitting(false);
+          return;
+        }
+        await buyAirtime(selectedAccount.id, {
+          phone_number: purchaseTarget,
+          amount: formattedAmount,
+        });
+        setSuccess(`Airtime purchase of R${formattedAmount} completed for ${purchaseTarget}.`);
+      } else if (actionType === 'electricity') {
+        if (!purchaseTarget) {
+          setError('Meter number is required for electricity purchase.');
+          setSubmitting(false);
+          return;
+        }
+        await buyElectricity(selectedAccount.id, {
+          meter_number: purchaseTarget,
+          amount: formattedAmount,
+        });
+        setSuccess(`Electricity purchase of R${formattedAmount} completed for meter ${purchaseTarget}.`);
       }
 
       setAmount('');
       setTargetAccount('');
+      setPurchaseTarget('');
       const list = await fetchAccounts();
       const refreshed = list.find((a) => a.id === selectedAccount.id) || selectedAccount;
       fetchTransactions(refreshed.id);
@@ -199,8 +253,54 @@ export default function Dashboard() {
     }
   };
 
+  const handleProfileSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+
+    try {
+      setProfileSubmitting(true);
+      await updateProfile(profileForm);
+      await refreshUser();
+      setSuccess('Profile updated successfully.');
+    } catch (err) {
+      setError(extractErrorMessage(err));
+    } finally {
+      setProfileSubmitting(false);
+    }
+  };
+
+  const handlePasswordSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+
+    try {
+      setPasswordSubmitting(true);
+      await changePassword(passwordForm);
+      setPasswordForm({ current_password: '', new_password: '' });
+      setSuccess('Password changed successfully.');
+    } catch (err) {
+      setError(extractErrorMessage(err));
+    } finally {
+      setPasswordSubmitting(false);
+    }
+  };
+
   const displayName =
     [user?.first_name, user?.last_name].filter(Boolean).join(' ') || user?.username;
+
+  useEffect(() => {
+    if (user) {
+      setProfileForm({
+        first_name: user.first_name || '',
+        last_name: user.last_name || '',
+        email: user.email || '',
+        phone: user.phone || '',
+        id_number: user.id_number || '',
+      });
+    }
+  }, [user]);
 
   const activeTabIndex = TABS.findIndex((t) => t.key === actionType);
   const ActiveIcon = TABS[activeTabIndex]?.icon ?? ArrowDownLeft;
@@ -287,8 +387,28 @@ export default function Dashboard() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Account Selector & Balance Card */}
+            {/* Side nav + Account Selector & Balance Card */}
             <div className="md:col-span-1 space-y-4">
+              <div className="bg-white p-3 rounded-xl shadow-sm flex flex-col gap-2">
+                <button
+                  onClick={() => setSideView('dashboard')}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-gray-100 transition-colors ${
+                    sideView === 'dashboard' ? 'bg-gray-100 font-semibold' : 'text-gray-600'
+                  }`}
+                >
+                  <Wallet className="w-4 h-4" />
+                  Dashboard
+                </button>
+                <button
+                  onClick={() => setSideView('profile')}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm hover:bg-gray-100 transition-colors ${
+                    sideView === 'profile' ? 'bg-gray-100 font-semibold' : 'text-gray-600'
+                  }`}
+                >
+                  <User className="w-4 h-4" />
+                  Profile
+                </button>
+              </div>
               <div className="relative overflow-hidden bg-gradient-to-br from-brand-600 via-brand-600 to-mint-600 animate-aurora text-white p-6 rounded-xl shadow-lg shadow-brand-600/20 animate-fade-slide-up">
                 <div className="shimmer-overlay" />
                 <Wallet className="absolute -bottom-4 -right-4 w-28 h-28 text-white/10 animate-gentle-bounce" style={{ '--tilt': '-8deg' }} />
@@ -353,33 +473,30 @@ export default function Dashboard() {
               </form>
             </div>
 
-            {/* Quick Actions Form */}
-            <div
-              className="md:col-span-2 bg-white p-6 rounded-xl shadow-sm space-y-4 animate-fade-slide-up"
-              style={{ animationDelay: '40ms' }}
-            >
+            {/* Main content or profile view */}
+            {sideView === 'dashboard' ? (
+              <div
+                className="md:col-span-2 bg-white p-6 rounded-xl shadow-sm space-y-4 animate-fade-slide-up"
+                style={{ animationDelay: '40ms' }}
+              >
               <h2 className="text-lg font-semibold text-gray-800">Account Operations</h2>
 
-              <div className="relative flex border-b pb-4">
-                <div className="relative grid grid-cols-3 gap-2 w-full">
-                  <div
-                    className="absolute inset-y-0 w-1/3 bg-brand-600 rounded-lg transition-transform duration-300 ease-out"
-                    style={{ transform: `translateX(${activeTabIndex * 100}%)` }}
-                  />
-                  {TABS.map(({ key, label, icon: Icon }) => (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => setActionType(key)}
-                      className={`relative z-10 px-4 py-2 text-sm font-medium rounded-lg transition-colors flex items-center justify-center gap-1.5 ${
-                        actionType === key ? 'text-white' : 'text-gray-600 hover:text-brand-600'
-                      }`}
-                    >
-                      <Icon className="w-3.5 h-3.5" />
-                      {label}
-                    </button>
-                  ))}
-                </div>
+              <div className="flex flex-wrap gap-2 border-b pb-4">
+                {TABS.map(({ key, label, icon: Icon }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setActionType(key)}
+                    className={`flex-1 min-w-[120px] justify-center px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200 inline-flex items-center gap-1.5 border ${
+                      actionType === key
+                        ? 'bg-brand-600 text-white border-brand-600 shadow-sm'
+                        : 'bg-white text-gray-600 border-gray-200 hover:border-brand-300 hover:text-brand-700'
+                    }`}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    {label}
+                  </button>
+                ))}
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-4">
@@ -393,6 +510,34 @@ export default function Dashboard() {
                       onChange={(e) => setTargetAccount(e.target.value)}
                       placeholder="Enter account number"
                       className="w-full p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none transition-all focus:-translate-y-0.5"
+                    />
+                  </div>
+                )}
+
+                {actionType === 'airtime' && (
+                  <div className="animate-fade-slide-up">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+                    <input
+                      type="text"
+                      required
+                      value={purchaseTarget}
+                      onChange={(e) => setPurchaseTarget(e.target.value)}
+                      placeholder="Enter 10-digit phone number"
+                      className="w-full p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none transition-all"
+                    />
+                  </div>
+                )}
+
+                {actionType === 'electricity' && (
+                  <div className="animate-fade-slide-up">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Meter Number</label>
+                    <input
+                      type="text"
+                      required
+                      value={purchaseTarget}
+                      onChange={(e) => setPurchaseTarget(e.target.value)}
+                      placeholder="Enter meter number"
+                      className="w-full p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none transition-all"
                     />
                   </div>
                 )}
@@ -424,10 +569,29 @@ export default function Dashboard() {
                   Execute {actionType}
                 </button>
               </form>
-            </div>
+              </div>
+            ) : (
+              <div className="md:col-span-2">
+                <div className="bg-white p-6 rounded-xl shadow-sm animate-fade-slide-up">
+                  <Profile
+                    user={user}
+                    displayName={displayName}
+                    profileForm={profileForm}
+                    setProfileForm={setProfileForm}
+                    profileSubmitting={profileSubmitting}
+                    handleProfileSubmit={handleProfileSubmit}
+                    passwordForm={passwordForm}
+                    setPasswordForm={setPasswordForm}
+                    passwordSubmitting={passwordSubmitting}
+                    handlePasswordSubmit={handlePasswordSubmit}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
 
+        {/* Profile is now accessible from the side-nav (sideView) */}
         {/* Transaction History */}
         {!initialLoad && accounts.length > 0 && (
           <div
@@ -439,7 +603,38 @@ export default function Dashboard() {
                 Transaction History
                 {selectedAccount ? ` · ${selectedAccount.account_number}` : ''}
               </h2>
-              {txLoading && <Loader2 className="w-4 h-4 animate-spin text-gray-400" />}
+              <div className="flex items-center gap-3">
+                {txLoading && <Loader2 className="w-4 h-4 animate-spin text-gray-400" />}
+                <button
+                  type="button"
+                  disabled={!selectedAccount || exporting}
+                  onClick={async () => {
+                    if (!selectedAccount) return;
+                    try {
+                      setExporting(true);
+                      const res = await exportAccountStatement(selectedAccount.id);
+                      const url = window.URL.createObjectURL(new Blob([res.data]));
+                      const link = document.createElement('a');
+                      link.href = url;
+                      link.setAttribute(
+                        'download',
+                        `statement_${selectedAccount.account_number}.csv`
+                      );
+                      document.body.appendChild(link);
+                      link.click();
+                      link.remove();
+                      window.URL.revokeObjectURL(url);
+                    } catch (err) {
+                      setError('Failed to download statement. Please try again.');
+                    } finally {
+                      setExporting(false);
+                    }
+                  }}
+                  className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 transition hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Export CSV'}
+                </button>
+              </div>
             </div>
             {transactions.length === 0 ? (
               <p className="text-sm text-gray-500">No recent transactions for this account.</p>

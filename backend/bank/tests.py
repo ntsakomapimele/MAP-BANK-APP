@@ -23,7 +23,7 @@ class RegistrationTests(APITestCase):
             "first_name": "Alice",
             "last_name": "Doe",
             "password": "SuperSecret123",
-            "phone": "+15551234567",
+            "phone": "5551234567",
             "id_number": "9001011234567",
         }
         response = self.client.post(url, payload)
@@ -40,7 +40,7 @@ class RegistrationTests(APITestCase):
         self.assertTrue(User.objects.filter(username="alice").exists())
         customer = Customer.objects.get(user__username="alice")
         self.assertEqual(customer.id_number, "9001011234567")
-        self.assertEqual(customer.phone, "+15551234567")
+        self.assertEqual(customer.phone, "5551234567")
 
     def test_register_rejects_duplicate_email(self):
         User.objects.create_user(username="bob", email="dupe@example.com", password="SuperSecret123")
@@ -91,6 +91,49 @@ class AuthTests(APITestCase):
 
         refresh_attempt = self.client.post(reverse("token_refresh"), {"refresh": refresh})
         self.assertEqual(refresh_attempt.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class ProfileTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="ivan", email="ivan@example.com", password="SuperSecret123")
+        self.customer = Customer.objects.create(user=self.user, phone="+15551234567", id_number="9010011234567")
+        login = self.client.post(reverse("token_obtain_pair"), {"username": "ivan", "password": "SuperSecret123"})
+        self.access = login.data["access"]
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.access}")
+
+    def test_get_profile(self):
+        response = self.client.get(reverse("me"))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["email"], "ivan@example.com")
+        self.assertEqual(response.data["id_number"], "9010011234567")
+
+    def test_update_profile(self):
+        response = self.client.put(
+            reverse("me"),
+            {
+                "first_name": "Ivo",
+                "last_name": "Smith",
+                "email": "ivan.new@example.com",
+                "phone": "+15559876543",
+                "id_number": "9010017654321",
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.customer.refresh_from_db()
+        self.assertEqual(self.user.email, "ivan.new@example.com")
+        self.assertEqual(self.user.first_name, "Ivo")
+        self.assertEqual(self.customer.phone, "+15559876543")
+        self.assertEqual(self.customer.id_number, "9010017654321")
+
+    def test_change_password(self):
+        response = self.client.post(
+            reverse("change-password"),
+            {"current_password": "SuperSecret123", "new_password": "NewSecret123"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("NewSecret123"))
 
 
 @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")

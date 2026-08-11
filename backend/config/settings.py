@@ -88,14 +88,12 @@ MIDDLEWARE = [
 
 # CORS: only the React dev server (and anything you add via env) can call the API
 # from a browser. Wide open by default only in DEBUG, to make local dev painless.
-# CORS_ALLOWED_ORIGINS = env_list(
-#     "DJANGO_CORS_ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173"
-# )
-
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-]
+CORS_ALLOWED_ORIGINS = env_list(
+    "DJANGO_CORS_ALLOWED_ORIGINS",
+    "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174",
+)
+if DEBUG:
+    CORS_ALLOWED_ORIGIN_REGEXES = [r"^http://localhost:\\d+$", r"^http://127\\.0\\.0\\.1:\\d+$"]
 CORS_ALLOW_CREDENTIALS = True
 
 ROOT_URLCONF = "config.urls"

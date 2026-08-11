@@ -76,6 +76,16 @@ api.interceptors.response.use(
         const data = await refreshPromise;
         tokenStore.setTokens(data.access, data.refresh);
         original.headers.Authorization = `Bearer ${data.access}`;
+        // If the original request was logout, ensure the body uses the new refresh token.
+        if (original.url?.includes('/auth/logout/') && original.data) {
+          try {
+            const parsed = typeof original.data === 'string' ? JSON.parse(original.data) : original.data;
+            parsed.refresh = data.refresh;
+            original.data = JSON.stringify(parsed);
+          } catch {
+            // leave original data unchanged if parsing fails
+          }
+        }
         return api(original);
       } catch (refreshErr) {
         tokenStore.clear();
@@ -95,11 +105,16 @@ export const loginUser = (username, password) => api.post('/auth/login/', { user
 export const logoutUser = (refresh) => api.post('/auth/logout/', { refresh });
 export const forgotPassword = (email) => api.post('/auth/forgot-password/', { email });
 export const resetPassword = (payload) => api.post('/auth/reset-password/', payload);
+export const changePassword = (payload) => api.post('/auth/change-password/', payload);
 export const getMe = () => api.get('/auth/me/');
+export const getProfile = () => api.get('/auth/me/');
+export const updateProfile = (payload) => api.put('/auth/me/', payload);
 
 // ---- Accounts ----
 export const getAccounts = () => api.get('/accounts/');
 export const createAccount = (accountType) => api.post('/accounts/', { account_type: accountType });
+export const exportAccountStatement = (id) =>
+  api.get(`/accounts/${id}/export/`, { responseType: 'blob' });
 export const getAccount = (id) => api.get(`/accounts/${id}/`);
 export const deposit = (id, amount) => api.post(`/accounts/${id}/deposit/`, { amount });
 export const withdraw = (id, amount) => api.post(`/accounts/${id}/withdraw/`, { amount });
@@ -107,6 +122,9 @@ export const transfer = (id, toAccountNumber, amount) =>
   api.post(`/accounts/${id}/transfer/`, { to_account_number: toAccountNumber, amount });
 export const getAccountTransactions = (id, page = 1) =>
   api.get(`/accounts/${id}/transactions/`, { params: { page } });
+
+export const buyAirtime = (id, payload) => api.post(`/accounts/${id}/buy_airtime/`, payload);
+export const buyElectricity = (id, payload) => api.post(`/accounts/${id}/buy_electricity/`, payload);
 
 // ---- Transactions (combined, all accounts) ----
 export const getAllTransactions = (page = 1) => api.get('/transactions/', { params: { page } });
