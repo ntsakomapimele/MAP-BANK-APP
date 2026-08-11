@@ -1,5 +1,14 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { loginUser, registerUser, verifyRegistrationOtp, logoutUser, getMe, tokenStore } from './api';
+import {
+  loginUser,
+  registerUser,
+  verifyRegistrationOtp,
+  logoutUser,
+  forgotPassword as forgotPasswordApi,
+  resetPassword as resetPasswordApi,
+  getMe,
+  tokenStore,
+} from './api';
 
 const AuthContext = createContext(null);
 
@@ -51,6 +60,14 @@ export function AuthProvider({ children }) {
     return me.data;
   };
 
+  const forgotPassword = async (email) => {
+    return forgotPasswordApi(email);
+  };
+
+  const resetPassword = async (payload) => {
+    return resetPasswordApi(payload);
+  };
+
   const logout = async () => {
     const refresh = tokenStore.getRefresh();
     try {
@@ -64,7 +81,19 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, initializing, login, register, verifyRegistration, logout, refreshUser: loadUser }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        initializing,
+        login,
+        register,
+        verifyRegistration,
+        forgotPassword,
+        resetPassword,
+        logout,
+        refreshUser: loadUser,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

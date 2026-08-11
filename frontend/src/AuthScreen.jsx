@@ -42,10 +42,11 @@ const inputClass =
   'w-full p-2.5 border border-gray-200 rounded-lg bg-white/70 transition-all duration-200 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 focus:bg-white focus:outline-none focus:-translate-y-0.5';
 
 export default function AuthScreen() {
-  const { login, register, verifyRegistration } = useAuth();
-  const [mode, setMode] = useState('login'); // 'login' | 'register'
+  const { login, register, verifyRegistration, forgotPassword, resetPassword } = useAuth();
+  const [mode, setMode] = useState('login'); // 'login' | 'register' | 'forgot-password' | 'reset-password'
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
   const [otp, setOtp] = useState('');
@@ -65,15 +66,30 @@ export default function AuthScreen() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    setSuccess('');
     setLoading(true);
     try {
       if (mode === 'login') {
         await login(form.username, form.password);
-      } else if (!otpSent) {
-        await register(form);
+      } else if (mode === 'register') {
+        if (!otpSent) {
+          await register(form);
+          setOtpSent(true);
+          setSuccess('Verification code sent. Check your email.');
+        } else {
+          await verifyRegistration({ email: form.email, otp });
+        }
+      } else if (mode === 'forgot-password') {
+        await forgotPassword(form.email);
         setOtpSent(true);
-      } else {
-        await verifyRegistration({ email: form.email, otp });
+        setSuccess('Password reset code sent. Check your email.');
+        setOtp('');
+        setMode('reset-password');
+      } else if (mode === 'reset-password') {
+        await resetPassword({ email: form.email, otp, password: form.password });
+        setSuccess('Password reset successfully. You can now sign in.');
+        setOtp('');
+        setMode('login');
       }
     } catch (err) {
       setError(extractErrorMessage(err));
@@ -85,6 +101,7 @@ export default function AuthScreen() {
   const switchMode = () => {
     setMode((m) => (m === 'login' ? 'register' : 'login'));
     setError('');
+    setSuccess('');
     setOtpSent(false);
     setOtp('');
   };
@@ -259,43 +276,110 @@ export default function AuthScreen() {
                 </>
               )}
 
-              <Field label="Password" delay={mode === 'register' ? 200 : 40}>
-                <div className="relative">
+              {mode === 'forgot-password' && (
+                <Field label="Email" delay={120}>
                   <input
-                    type={showPassword ? 'text' : 'password'}
+                    type="email"
                     required
-                    minLength={8}
-                    value={form.password}
-                    onChange={update('password')}
-                    className={`${inputClass} pr-10`}
-                    autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                    value={form.email}
+                    onChange={update('email')}
+                    className={inputClass}
+                    autoComplete="email"
                   />
+                </Field>
+              )}
+
+              {mode === 'reset-password' && (
+                <>
+                  <Field label="Email" delay={120}>
+                    <input
+                      type="email"
+                      required
+                      value={form.email}
+                      onChange={update('email')}
+                      className={inputClass}
+                      autoComplete="email"
+                    />
+                  </Field>
+                  <Field label="Reset code" delay={160}>
+                    <input
+                      type="text"
+                      required
+                      value={otp}
+                      onChange={(e) => setOtp(e.target.value)}
+                      className={inputClass}
+                      placeholder="Enter the 6-digit code"
+                    />
+                  </Field>
+                </>
+              )}
+
+              {mode !== 'forgot-password' && (
+                <Field label="Password" delay={mode === 'register' ? 200 : 40}>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      minLength={8}
+                      value={form.password}
+                      onChange={update('password')}
+                      className={`${inputClass} pr-10`}
+                      autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((s) => !s)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-brand-600 transition-all duration-200 hover:scale-110"
+                      tabIndex={-1}
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  {(mode === 'register' || mode === 'reset-password') && (
+                    <p className="text-xs text-gray-400 mt-1">At least 8 characters, not too common or predictable.</p>
+                  )}
+                </Field>
+              )}
+              {mode === 'login' && (
+                <div className="text-right animate-fade-slide-up" style={{ animationDelay: '220ms' }}>
                   <button
                     type="button"
-                    onClick={() => setShowPassword((s) => !s)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-brand-600 transition-all duration-200 hover:scale-110"
-                    tabIndex={-1}
+                    onClick={() => {
+                      setError('');
+                      setSuccess('');
+                      setOtpSent(false);
+                      setOtp('');
+                      setMode('forgot-password');
+                    }}
+                    className="text-sm font-medium text-brand-600 hover:text-brand-700 hover:underline underline-offset-2"
                   >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    Forgot password?
                   </button>
                 </div>
-                {mode === 'register' && (
-                  <p className="text-xs text-gray-400 mt-1">At least 8 characters, not too common or predictable.</p>
-                )}
-              </Field>
+              )}
 
               <button
                 type="submit"
                 disabled={loading}
                 className="group w-full py-3 bg-gradient-to-r from-brand-600 to-mint-600 bg-[length:180%_100%] bg-left hover:bg-right disabled:from-brand-300 disabled:to-brand-300 text-white font-medium rounded-lg transition-all duration-500 flex items-center justify-center gap-2 active:scale-[0.98] shadow-lg shadow-brand-600/20 animate-fade-slide-up"
-                style={{ animationDelay: `${mode === 'register' ? 240 : 80}ms` }}
+                style={{ animationDelay: `${mode === 'register' || mode === 'forgot-password' ? 240 : 80}ms` }}
               >
                 {loading ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
                   <ArrowRight className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-0.5" />
                 )}
-                {mode === 'login' ? 'Sign in' : otpSent ? 'Verify account' : 'Create account'}
+                {mode === 'login'
+                  ? 'Sign in'
+                  : mode === 'register'
+                  ? otpSent
+                    ? 'Verify account'
+                    : 'Create account'
+                  : mode === 'forgot-password'
+                  ? otpSent
+                    ? 'Enter reset code'
+                    : 'Send reset code'
+                  : 'Reset password'}
               </button>
             </form>
 
@@ -304,10 +388,67 @@ export default function AuthScreen() {
                 We sent a verification code to your email. Enter it above to finish creating your account.
               </p>
             )}
+            {mode === 'forgot-password' && otpSent && (
+              <p className="text-sm text-gray-500 text-center animate-fade-in" style={{ animationDelay: '300ms' }}>
+                We sent a reset code to your email. Enter it above with your new password.
+              </p>
+            )}
+            {success && (
+              <p className="text-sm text-center text-green-600 animate-fade-in" style={{ animationDelay: '300ms' }}>
+                {success}
+              </p>
+            )}
+            {mode === 'login' && (
+              <p className="text-sm text-center text-gray-500 animate-fade-in" style={{ animationDelay: '300ms' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError('');
+                    setSuccess('');
+                    setOtpSent(false);
+                    setOtp('');
+                    setMode('forgot-password');
+                  }}
+                  className="text-brand-600 font-medium hover:underline underline-offset-2"
+                >
+                  Forgot password?
+                </button>
+              </p>
+            )}
             <p className="text-sm text-center text-gray-500 animate-fade-in" style={{ animationDelay: '300ms' }}>
-              {mode === 'login' ? "Don't have an account?" : 'Already have an account?'}{' '}
-              <button onClick={switchMode} className="text-brand-600 font-medium hover:underline underline-offset-2">
-                {mode === 'login' ? 'Register' : 'Sign in'}
+              {mode === 'login'
+                ? "Don't have an account?"
+                : mode === 'register'
+                ? 'Already have an account?'
+                : mode === 'forgot-password'
+                ? 'Remembered your password?'
+                : 'Need to resend reset code?'}{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  setError('');
+                  setSuccess('');
+                  setOtpSent(false);
+                  setOtp('');
+                  setMode(
+                    mode === 'login'
+                      ? 'register'
+                      : mode === 'register'
+                      ? 'login'
+                      : mode === 'forgot-password'
+                      ? 'login'
+                      : 'forgot-password'
+                  );
+                }}
+                className="text-brand-600 font-medium hover:underline underline-offset-2"
+              >
+                {mode === 'login'
+                  ? 'Register'
+                  : mode === 'register'
+                  ? 'Sign in'
+                  : mode === 'forgot-password'
+                  ? 'Sign in'
+                  : 'Forgot password?'}
               </button>
             </p>
           </div>

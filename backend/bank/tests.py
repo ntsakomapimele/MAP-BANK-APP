@@ -1,14 +1,16 @@
 import re
+from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib.auth.models import User
 from django.core import mail
 from django.test import override_settings
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from .models import Account, Customer, Transaction
+from .models import Account, Customer, PasswordResetOtp, Transaction
 
 
 @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
@@ -89,6 +91,37 @@ class AuthTests(APITestCase):
 
         refresh_attempt = self.client.post(reverse("token_refresh"), {"refresh": refresh})
         self.assertEqual(refresh_attempt.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class PasswordResetTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="india", email="india@example.com", password="SuperSecret123")
+        Customer.objects.create(user=self.user, phone="+15551234567", id_number="9009011234567")
+
+    def test_forgot_password_sends_code(self):
+        response = self.client.post(reverse("forgot-password"), {"email": "india@example.com"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(mail.outbox), 1)
+        otp_code = re.search(r"\d{6}", mail.outbox[0].body)
+        self.assertIsNotNone(otp_code)
+        otp_code = otp_code.group(0)
+        self.assertTrue(PasswordResetOtp.objects.filter(email="india@example.com", otp=otp_code, used=False).exists())
+
+    def test_reset_password_with_code(self):
+        otp_code = "123456"
+        PasswordResetOtp.objects.create(
+            email="india@example.com",
+            otp=otp_code,
+            expires_at=timezone.now() + timedelta(minutes=10),
+        )
+        response = self.client.post(
+            reverse("reset-password"),
+            {"email": "india@example.com", "otp": otp_code, "password": "NewSecret123"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("NewSecret123"))
 
 
 class AccountTests(APITestCase):

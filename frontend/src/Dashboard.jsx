@@ -272,7 +272,7 @@ export default function Dashboard() {
                 onChange={(e) => setNewAccountType(e.target.value)}
                 className="p-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none transition-shadow"
               >
-                <option value="CHECKING">Checking</option>
+                <option value="CHECKING">Current</option>
                 <option value="SAVINGS">Savings</option>
               </select>
               <button
@@ -335,7 +335,7 @@ export default function Dashboard() {
                   onChange={(e) => setNewAccountType(e.target.value)}
                   className="flex-1 p-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-500 focus:outline-none transition-shadow"
                 >
-                  <option value="CHECKING">Checking</option>
+                  <option value="CHECKING">Current</option>
                   <option value="SAVINGS">Savings</option>
                 </select>
                 <button

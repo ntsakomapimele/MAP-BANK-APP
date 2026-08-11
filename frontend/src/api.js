@@ -93,6 +93,8 @@ export const registerUser = (payload) => api.post('/auth/register/', payload);
 export const verifyRegistrationOtp = (payload) => api.post('/auth/verify-registration/', payload);
 export const loginUser = (username, password) => api.post('/auth/login/', { username, password });
 export const logoutUser = (refresh) => api.post('/auth/logout/', { refresh });
+export const forgotPassword = (email) => api.post('/auth/forgot-password/', { email });
+export const resetPassword = (payload) => api.post('/auth/reset-password/', payload);
 export const getMe = () => api.get('/auth/me/');
 
 // ---- Accounts ----

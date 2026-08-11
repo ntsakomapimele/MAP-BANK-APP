@@ -43,7 +43,7 @@ class PasswordResetOtp(models.Model):
 
 class Account(models.Model):
     ACCOUNT_TYPES = [
-        ("CHECKING", "Checking"),
+        ("CHECKING", "Current"),
         ("SAVINGS", "Savings"),
     ]
 
